@@ -1,6 +1,7 @@
 
 
-const apm = require('elastic-apm-node').start()
+const fs = require('fs');
+const apm = require('elastic-apm-node').start(JSON.parse(fs.readFileSync('./config.json', 'utf8')))
 const express = require('express');
 const mongoose = require('mongoose');
 
@@ -14,12 +15,15 @@ if (apm.isStarted()) {
 }
 
 mongoose.set('debug', (collectionName, method, query, doc) => {
-    if (apm.isStarted()) {
+    if (collectionName === 'users' && apm.isStarted()) {
 
-        const user = apm.currentTransaction?._user
+        const user = apm.currentTransaction?._user || {}
+        const custom = apm.currentTransaction?._custom || {}
         const transactionId = apm.currentTraceIds['transaction.id']
 
-        console.log(`${JSON.stringify(user)}, ${transactionId}, ${collectionName}.${method}`, JSON.stringify(query), doc);
+        //pino로 적당히
+        console.log(`${JSON.stringify(custom)}, ${JSON.stringify(user)}, ${transactionId}, ${collectionName}.${method}`, JSON.stringify(query), doc);
+        //{"hello":"world"}, {"id":"123","username":"123","email":"123"}, 028db2efed1ce952, users.find {"id":1} { sort: { _id: -1 } }
     }
 })
 
@@ -43,12 +47,16 @@ app.use((req, res, next) => {
         email: '123',
     })
 
+    apm.setCustomContext({
+        hello: 'world'
+    })
+
     req.apmMetadata = apmMetadata;
     next();
 });
 
 app.get('/1', async (req, res) => {
-    const users = await userModel.find({ id: 1 });
+    const users = await userModel.find({ id: 1 }).sort({ _id: -1 });
 
     res.send(users);
 });
